@@ -6,13 +6,13 @@ import {
   DefaultResourceLoader,
   estimateTokens,
   SessionManager,
-  SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import type { ReasoningLevel, ThinkLevel } from "../../auto-reply/thinking.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
+import { generateSecureToken } from "../../infra/secure-random.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { type enqueueCommand, enqueueCommandInLane } from "../../process/command-queue.js";
 import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-key.js";
@@ -39,7 +39,7 @@ import {
   validateAnthropicTurns,
   validateGeminiTurns,
 } from "../pi-embedded-helpers.js";
-import { applyPiCompactionSettingsFromConfig } from "../pi-settings.js";
+import { createPreparedEmbeddedPiSettingsManager } from "../pi-project-settings.js";
 import { createOpenClawCodingTools } from "../pi-tools.js";
 import { resolveSandboxContext } from "../sandbox.js";
 import { repairSessionFileIfNeeded } from "../session-file-repair.js";
@@ -133,7 +133,7 @@ type CompactionMessageMetrics = {
 };
 
 function createCompactionDiagId(): string {
-  return `cmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `cmp-${Date.now().toString(36)}-${generateSecureToken(4)}`;
 }
 
 function getMessageTextChars(msg: AgentMessage): number {
@@ -498,6 +498,7 @@ export async function compactEmbeddedPiSessionDirect(
       docsPath: docsPath ?? undefined,
       ttsHint,
       promptMode,
+      acpEnabled: params.config?.acp?.enabled !== false,
       runtimeInfo,
       reactionGuidance,
       messageToolHints,
@@ -536,9 +537,9 @@ export async function compactEmbeddedPiSessionDirect(
         allowedToolNames,
       });
       trackSessionManagerAccess(params.sessionFile);
-      const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-      applyPiCompactionSettingsFromConfig({
-        settingsManager,
+      const settingsManager = createPreparedEmbeddedPiSettingsManager({
+        cwd: effectiveWorkspace,
+        agentDir,
         cfg: params.config,
       });
       // Sets compaction/pruning runtime state and returns extension factories
